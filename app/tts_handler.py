@@ -82,9 +82,25 @@ async def _generate_audio(text, voice, response_format, speed):
         print(f"Error converting speed: {e}. Defaulting to +0%.")
         speed_rate = "+0%"
 
-    # Generate the MP3 file
-    communicator = edge_tts.Communicate(text=text, voice=edge_tts_voice, rate=speed_rate)
-    await communicator.save(temp_mp3_path)
+    # Generate the MP3 file with enhanced SSL context workaround and retry logic
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            communicator = edge_tts.Communicate(text=text, voice=edge_tts_voice, rate=speed_rate)
+            await communicator.save(temp_mp3_path)
+            break  # Success, exit retry loop
+        except Exception as e:
+            if attempt < max_retries - 1 and "certificate verify failed" in str(e).lower():
+                import time
+                import random
+                wait_time = random.uniform(1, 2 ** attempt)  # Exponential backoff
+                print(f"SSL Error on attempt {attempt + 1}, retrying in {wait_time:.1f}s: {e}")
+                time.sleep(wait_time)
+                continue
+            else:
+                # If it's not an SSL error or we've exhausted retries, re-raise
+                raise e
+
     temp_mp3_file_obj.close() # Explicitly close our file object for the initial mp3
 
     # If the requested format is mp3, return the generated file directly
